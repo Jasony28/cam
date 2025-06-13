@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Partager ma caméra</title>
+</head>
+<body>
+  <h2>Partage ta caméra</h2>
+  <video id="localVideo" autoplay playsinline muted width="320"></video>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    let localStream;
+    let peerConnection;
+
+    async function startCamera() {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      document.getElementById('localVideo').srcObject = localStream;
+
+      peerConnection = new RTCPeerConnection();
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          socket.emit('signal', { type: 'candidate', candidate: event.candidate });
+        }
+      };
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      socket.emit('signal', { type: 'offer', offer });
+    }
+
+    socket.on('signal', async data => {
+      if (data.type === 'answer') {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+      } else if (data.type === 'candidate') {
+        try {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (e) {}
+      }
+    });
+
+    startCamera();
+  </script>
+</body>
+</html>
